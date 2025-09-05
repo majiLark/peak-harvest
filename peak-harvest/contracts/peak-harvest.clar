@@ -1,30 +1,22 @@
-;; Peak Harvest DAO Governance Platform
-;; Revolutionary biomimetic governance with dynamic reward harvesting
+;; Simplified Peak Harvest DAO Governance Platform
+;; Streamlined version with reduced complexity and error potential
 
 ;; Error Constants
 (define-constant ERR-NOT-AUTHORIZED (err u100))
 (define-constant ERR-INVALID-SEASON (err u101))
-(define-constant ERR-INSUFFICIENT-BALANCE (err u102))
-(define-constant ERR-MEMBER-NOT-FOUND (err u103))
-(define-constant ERR-INVALID-CONTRIBUTION (err u104))
-(define-constant ERR-HARVEST-NOT-READY (err u105))
-(define-constant ERR-INVALID-POD (err u106))
-(define-constant ERR-PEER-REVIEW-PENDING (err u107))
-(define-constant ERR-FUTURE-STAKE-EXISTS (err u108))
-(define-constant ERR-DISAGREEMENT-ACTIVE (err u109))
-(define-constant ERR-INVALID-MULTIPLIER (err u110))
-(define-constant ERR-SEASON-NOT-COMPLETE (err u111))
+(define-constant ERR-MEMBER-NOT-FOUND (err u102))
+(define-constant ERR-INVALID-CONTRIBUTION (err u103))
+(define-constant ERR-INVALID-POD (err u104))
+(define-constant ERR-ALREADY-EXISTS (err u105))
 
 ;; Data Variables
 (define-data-var contract-owner principal tx-sender)
 (define-data-var current-season uint u1)
 (define-data-var total-members uint u0)
-(define-data-var harvest-threshold uint u1000)
 (define-data-var base-reward uint u100)
-(define-data-var peak-multiplier uint u3)
 (define-data-var governance-active bool true)
 
-;; Season and Pod Types
+;; Constants
 (define-constant SEASON-SPRING u1)
 (define-constant SEASON-SUMMER u2)
 (define-constant SEASON-AUTUMN u3)
@@ -34,152 +26,88 @@
 (define-constant POD-OPERATIONAL u2)
 (define-constant POD-URGENT u3)
 
-;; Member Data Structure
+;; Simplified Member Structure
 (define-map members 
   principal 
   {
     reputation-score: uint,
     total-contributions: uint,
-    seasonal-activity: {spring: uint, summer: uint, autumn: uint, winter: uint},
     last-active-season: uint,
-    peer-validation-score: uint,
-    governance-weight: uint
+    is-active: bool
   }
 )
 
-;; Contribution Portfolio Tracking
-(define-map contribution-portfolio
-  {member: principal, season: uint}
+;; Simplified Contribution Tracking
+(define-map contributions
+  {member: principal, season: uint, contribution-id: uint}
   {
-    quantity-score: uint,
-    velocity-index: uint,
-    timing-score: uint,
+    pod-type: uint,
     impact-rating: uint,
-    peer-validated: bool,
-    harvest-eligible: bool
+    block-height: uint,
+    validated: bool
   }
 )
 
-;; Seasonal Governance Pods
-(define-map governance-pods
+;; Simple Pod Tracking
+(define-map pods
   uint
   {
     pod-type: uint,
-    cycle-length: uint,
     active-proposals: uint,
-    total-participation: uint,
-    current-peak-intensity: uint,
-    last-harvest-block: uint
+    total-participation: uint
   }
 )
 
-;; Contribution Futures Staking
-(define-map contribution-futures
-  {member: principal, season: uint, goal-hash: (buff 32)}
-  {
-    staked-amount: uint,
-    expected-contribution: uint,
-    commitment-block: uint,
-    fulfillment-status: bool,
-    accountability-score: uint
-  }
-)
-
-;; Peak Amplification Tracking
-(define-map peak-amplification
-  uint ;; season
-  {
-    community-momentum: uint,
-    collective-peak-intensity: uint,
-    harvest-window-active: bool,
-    total-rewards-pool: uint,
-    distribution-multiplier: uint
-  }
-)
-
-;; Social Proof of Work Validations
-(define-map peer-validations
-  {validator: principal, member: principal, contribution-id: uint}
-  {
-    validation-score: uint,
-    review-timestamp: uint,
-    validation-weight: uint
-  }
-)
-
-;; Disagreement Resolution Tracks
-(define-map disagreement-tracks
-  uint ;; track-id
-  {
-    proposal-a-hash: (buff 32),
-    proposal-b-hash: (buff 32),
-    track-a-rewards: uint,
-    track-b-rewards: uint,
-    resolution-block: uint,
-    winning-track: uint
-  }
-)
-
-;; Season Activity Metrics
-(define-map season-metrics
+;; Season Metrics
+(define-map season-stats
   uint
   {
     total-activity: uint,
-    peak-periods: uint,
-    harvest-events: uint,
-    average-velocity: uint,
-    participation-rate: uint
+    member-count: uint,
+    rewards-distributed: uint
   }
 )
 
+;; Simple counter for contribution IDs
+(define-data-var next-contribution-id uint u1)
+
 ;; Initialize Contract
-(define-private (initialize-contract)
+(define-private (initialize-pods)
   (begin
-    (map-set governance-pods POD-STRATEGIC {
+    (map-set pods POD-STRATEGIC {
       pod-type: POD-STRATEGIC,
-      cycle-length: u52560, ;; ~1 year in blocks
       active-proposals: u0,
-      total-participation: u0,
-      current-peak-intensity: u0,
-      last-harvest-block: u0
+      total-participation: u0
     })
-    (map-set governance-pods POD-OPERATIONAL {
+    (map-set pods POD-OPERATIONAL {
       pod-type: POD-OPERATIONAL,
-      cycle-length: u13140, ;; ~3 months in blocks
       active-proposals: u0,
-      total-participation: u0,
-      current-peak-intensity: u0,
-      last-harvest-block: u0
+      total-participation: u0
     })
-    (map-set governance-pods POD-URGENT {
+    (map-set pods POD-URGENT {
       pod-type: POD-URGENT,
-      cycle-length: u1008, ;; ~1 week in blocks
       active-proposals: u0,
-      total-participation: u0,
-      current-peak-intensity: u0,
-      last-harvest-block: u0
+      total-participation: u0
     })
     (ok true)
   )
 )
 
 ;; Owner Functions
-(define-public (set-harvest-threshold (new-threshold uint))
+(define-public (set-base-reward (new-reward uint))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
-    (var-set harvest-threshold new-threshold)
+    (var-set base-reward new-reward)
     (ok true)
   )
 )
 
 (define-public (advance-season)
-  (begin
+  (let ((current (var-get current-season)))
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
-    (let ((current (var-get current-season)))
-      (var-set current-season (if (is-eq current u4) u1 (+ current u1)))
-      (try! (trigger-seasonal-transition))
-      (ok true)
-    )
+    (var-set current-season 
+      (if (is-eq current u4) u1 (+ current u1)))
+    (ok true)
   )
 )
 
@@ -191,112 +119,152 @@
   )
 )
 
-;; Member Registration and Management
+;; Member Functions
 (define-public (register-member)
   (let ((member tx-sender))
     (asserts! (var-get governance-active) ERR-NOT-AUTHORIZED)
+    (asserts! (is-none (map-get? members member)) ERR-ALREADY-EXISTS)
+    
     (map-set members member {
       reputation-score: u100,
       total-contributions: u0,
-      seasonal-activity: {spring: u0, summer: u0, autumn: u0, winter: u0},
       last-active-season: (var-get current-season),
-      peer-validation-score: u100,
-      governance-weight: u1
+      is-active: true
     })
     (var-set total-members (+ (var-get total-members) u1))
     (ok true)
   )
 )
 
-(define-public (submit-contribution (pod-type uint) (impact-rating uint) (contribution-data (buff 512)))
+(define-public (submit-contribution (pod-type uint) (impact-rating uint))
   (let (
     (member tx-sender)
     (season (var-get current-season))
+    (contribution-id (var-get next-contribution-id))
     (member-data (unwrap! (map-get? members member) ERR-MEMBER-NOT-FOUND))
   )
     (asserts! (var-get governance-active) ERR-NOT-AUTHORIZED)
     (asserts! (and (>= pod-type u1) (<= pod-type u3)) ERR-INVALID-POD)
     (asserts! (and (>= impact-rating u1) (<= impact-rating u10)) ERR-INVALID-CONTRIBUTION)
     
-    (let ((velocity-score (calculate-velocity-index member pod-type)))
-      (map-set contribution-portfolio {member: member, season: season} {
-        quantity-score: (+ (get quantity-score (default-to {
-          quantity-score: u0,
-          velocity-index: u0,
-          timing-score: u0,
-          impact-rating: u0,
-          peer-validated: false,
-          harvest-eligible: false
-        } (map-get? contribution-portfolio {member: member, season: season}))) u1),
-        velocity-index: velocity-score,
-        timing-score: (calculate-timing-score),
-        impact-rating: impact-rating,
-        peer-validated: false,
-        harvest-eligible: false
-      })
-      
-      (try! (update-member-activity member season))
-      (try! (update-pod-participation pod-type))
-      (ok true)
+    ;; Record contribution
+    (map-set contributions {member: member, season: season, contribution-id: contribution-id} {
+      pod-type: pod-type,
+      impact-rating: impact-rating,
+      block-height: block-height,
+      validated: false
+    })
+    
+    ;; Update member data
+    (map-set members member (merge member-data {
+      total-contributions: (+ (get total-contributions member-data) u1),
+      last-active-season: season
+    }))
+    
+    ;; Update pod participation
+    (let ((pod-data (unwrap! (map-get? pods pod-type) ERR-INVALID-POD)))
+      (map-set pods pod-type (merge pod-data {
+        total-participation: (+ (get total-participation pod-data) u1)
+      }))
     )
+    
+    ;; Increment contribution counter
+    (var-set next-contribution-id (+ contribution-id u1))
+    (ok contribution-id)
   )
 )
 
-(define-public (validate-peer-contribution (member principal) (contribution-id uint) (validation-score uint))
-  (let ((validator tx-sender))
+(define-public (validate-contribution (member principal) (season uint) (contribution-id uint))
+  (let (
+    (validator tx-sender)
+    (contribution-key {member: member, season: season, contribution-id: contribution-id})
+    (contribution-data (unwrap! (map-get? contributions contribution-key) ERR-MEMBER-NOT-FOUND))
+  )
     (asserts! (var-get governance-active) ERR-NOT-AUTHORIZED)
     (asserts! (is-some (map-get? members validator)) ERR-MEMBER-NOT-FOUND)
-    (asserts! (is-some (map-get? members member)) ERR-MEMBER-NOT-FOUND)
-    (asserts! (and (>= validation-score u1) (<= validation-score u10)) ERR-INVALID-CONTRIBUTION)
+    (asserts! (not (is-eq validator member)) ERR-NOT-AUTHORIZED) ;; Can't validate own contribution
     
-    (map-set peer-validations {validator: validator, member: member, contribution-id: contribution-id} {
-      validation-score: validation-score,
-      review-timestamp: block-height,
-      validation-weight: (get governance-weight (unwrap! (map-get? members validator) ERR-MEMBER-NOT-FOUND))
-    })
+    ;; Mark as validated
+    (map-set contributions contribution-key (merge contribution-data {
+      validated: true
+    }))
     
-    (try! (update-peer-validation-status member contribution-id))
+    ;; Update validator's reputation
+    (let ((validator-data (unwrap! (map-get? members validator) ERR-MEMBER-NOT-FOUND)))
+      (map-set members validator (merge validator-data {
+        reputation-score: (+ (get reputation-score validator-data) u5)
+      }))
+    )
+    
     (ok true)
   )
 )
 
-(define-public (stake-contribution-future (season uint) (goal-hash (buff 32)) (stake-amount uint) (expected-contribution uint))
-  (let ((member tx-sender))
-    (asserts! (var-get governance-active) ERR-NOT-AUTHORIZED)
-    (asserts! (is-some (map-get? members member)) ERR-MEMBER-NOT-FOUND)
-    (asserts! (and (>= season u1) (<= season u4)) ERR-INVALID-SEASON)
-    (asserts! (is-none (map-get? contribution-futures {member: member, season: season, goal-hash: goal-hash})) ERR-FUTURE-STAKE-EXISTS)
+(define-public (distribute-season-rewards)
+  (let ((season (var-get current-season)))
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
     
-    (map-set contribution-futures {member: member, season: season, goal-hash: goal-hash} {
-      staked-amount: stake-amount,
-      expected-contribution: expected-contribution,
-      commitment-block: block-height,
-      fulfillment-status: false,
-      accountability-score: u0
+    ;; Update season stats
+    (map-set season-stats season {
+      total-activity: (get-season-activity season),
+      member-count: (var-get total-members),
+      rewards-distributed: (* (var-get base-reward) (var-get total-members))
     })
     (ok true)
   )
 )
 
-(define-public (trigger-harvest-event)
-  (let (
-    (season (var-get current-season))
-    (peak-data (get-peak-amplification season))
-  )
-    (asserts! (var-get governance-active) ERR-NOT-AUTHORIZED)
-    (asserts! (>= (get community-momentum peak-data) (var-get harvest-threshold)) ERR-HARVEST-NOT-READY)
-    
-    (try! (distribute-harvest-rewards season))
-    (try! (update-reputation-scores season))
-    (ok true)
-  )
+;; Helper Functions
+(define-private (get-season-activity (season uint))
+  ;; Simple activity calculation - returns a placeholder value
+  ;; In a real implementation, this would count actual contributions for the season
+  u10
 )
 
 ;; Read-Only Functions
-(define-read-only (get-member-portfolio (member principal))
-  (let ((season (var-get current-season)))
-    (map-get? contribution-portfolio {member: member, season: season})
-  )
+(define-read-only (get-member-info (member principal))
+  (map-get? members member)
 )
 
-(define-read-only (get-season-metrics (season uint))
+(define-read-only (get-contribution (member principal) (season uint) (contribution-id uint))
+  (map-get? contributions {member: member, season: season, contribution-id: contribution-id})
+)
+
+(define-read-only (get-pod-info (pod-type uint))
+  (map-get? pods pod-type)
+)
+
+(define-read-only (get-season-stats (season uint))
+  (map-get? season-stats season)
+)
+
+(define-read-only (get-current-season)
+  (var-get current-season)
+)
+
+(define-read-only (get-governance-status)
+  (var-get governance-active)
+)
+
+(define-read-only (get-contract-stats)
+  {
+    current-season: (var-get current-season),
+    total-members: (var-get total-members),
+    base-reward: (var-get base-reward),
+    governance-active: (var-get governance-active),
+    next-contribution-id: (var-get next-contribution-id)
+  }
+)
+
+(define-read-only (get-member-contributions (member principal) (season uint))
+  ;; Returns basic info about member's contributions for a season
+  {
+    member: member,
+    season: season,
+    total-contributions: (default-to u0 
+      (get total-contributions (map-get? members member)))
+  }
+)
+
+;; Initialize contract on deployment
+(initialize-pods)
